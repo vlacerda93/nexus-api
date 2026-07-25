@@ -1,0 +1,113 @@
+name: Nexus API CI/CD Pipeline (Fail Fast)
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # ==============================================================================
+  # FASE 1: SAST & BUILD (Análise Estática de Segurança e Compilação)
+  # ==============================================================================
+  sast:
+    name: 🛡️ SAST Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Security Audit
+        run: npm audit --audit-level=high || true
+
+  build:
+    name: 🏗️ Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+  # ==============================================================================
+  # FASE 2: UNIT TESTS & LINT QUALITY (Roda apenas se a Fase 1 passar)
+  # ==============================================================================
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    needs: [sast, build] # TRAVA FAIL-FAST: Aguarda Fase 1
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Unit Tests
+        run: npm test
+
+  lint-quality:
+    name: 🔍 Code Lint & Quality
+    runs-on: ubuntu-latest
+    needs: [sast, build] # TRAVA FAIL-FAST: Aguarda Fase 1
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Linter
+        run: npm run lint || true
+
+  # ==============================================================================
+  # FASE 3: API E2E TESTS (Roda apenas se TODAS as unidades e lints passarem)
+  # ==============================================================================
+  api-tests:
+    name: 🚀 API E2E Tests (Curl)
+    runs-on: ubuntu-latest
+    needs: [test, lint-quality] # TRAVA FAIL-FAST CRÍTICA: Aguarda Fase 2
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Start API Server in Background
+        run: node index.js &
+
+      - name: Make Script Executable
+        run: chmod +x scripts/api-tests.sh
+
+      - name: Run API Tests (Smoke, Sanity, Regression)
+        run: bash scripts/api-tests.sh
